@@ -1,0 +1,93 @@
+---
+title: "BAE Module 12 Mining Hurricane Harvey Tweets"
+author: "Brian Tierney"
+date: "11/23/2021"
+output: html_document
+---
+
+#Intro
+In this assignment I look at tweets from the hurricane harvey. 
+
+Import Library
+```{r, results='hide', message=FALSE,warning=FALSE}
+library(tidyverse)
+library(tidytext)
+library(wordcloud)
+library(textdata)
+library(lubridate)
+library(stringi)
+```
+
+# Part 1: When did Harvey-related tweets peak in relation to when the hurricane made landfall?
+
+```{r, message=FALSE,warning=FALSE}
+harvey_tweets <- read_csv('data/hurricane_harvey_tweets.csv')
+
+date_time_counts <- count(harvey_tweets, datetime)
+
+harvey_date_plot <- date_time_counts %>% ggplot(aes(x=datetime, y=n)) +
+  geom_point(alpha=.5) +
+  geom_vline(xintercept = ymd_hms("2017-08-26 03:00:00"),color='red')+
+  xlab('') +
+  ylab('Number of tweets')
+
+harvey_date_plot
+```
+
+# Part 2: What are the 20 most commonly used words in the Hurricane Harvey tweets?
+
+```{r, message=FALSE,warning=FALSE}
+filter_words <- data.frame(word = c("hurricane", "harvey", "hurricaneharvey", "http", "https", "html", "ift.tt", "pic.twitter.com", "twitter.com", "fb.me", "bit.ly", "dlvr.it", "youtube", "youtu.be"))
+
+data(stop_words)
+
+tweets_text <- harvey_tweets %>% select(tweet) %>% mutate(tweet = stri_enc_toutf8(tweet)) %>%
+  unnest_tokens(input = tweet,output = word,drop = TRUE) %>% anti_join(stop_words)
+
+tweets_text <- anti_join(x=tweets_text, y= filter_words)
+
+tweet_count <- tweets_text %>% count(word, sort = TRUE) %>% top_n(20) 
+
+tweet_count$word <- reorder(tweet_count$word,tweet_count$n)
+
+tweet_word_plot <- tweet_count %>% ggplot(aes(y = word, x=n)) +
+  geom_col(stat = 'identity')
+
+tweet_word_plot
+```
+
+# Part 3: What are common words used in tweets that reference refineries?
+
+```{r, message=FALSE,warning=FALSE}
+tweets_for_cloud <- harvey_tweets %>% select(tweet) %>% 
+  filter(str_detect(tweet,'refinery') | str_detect(tweet,'refineries')) %>%
+  unnest_tokens(input = tweet,output = word,drop = TRUE) %>% anti_join(stop_words) %>% anti_join(y= filter_words)
+
+cloud_counts <- tweets_for_cloud %>% count(word, sort = TRUE) %>% top_n(100) 
+
+tweet_cloud <- wordcloud(words = cloud_counts$word, freq = cloud_counts$n, max.words = 100)
+
+```
+
+In this wordcloud the reader can see that economix impacts are emphasized more in these tweets. This can be seen with words like oil, prices, and business being used very frequently.
+
+# Part 4: How did the average sentiment of tweets change from August 17-29, 2017?
+
+```{r, message=FALSE,warning=FALSE}
+tweets <- harvey_tweets %>% mutate(tweet = stri_enc_toutf8(tweet)) %>%
+  unnest_tokens(input = tweet,output = word,drop = TRUE) %>% anti_join(stop_words)
+
+sentiments <- get_sentiments('afinn')
+tweet_sentiment = full_join(x = tweets, y = sentiments)
+
+tweet_sentiment$value <- tweet_sentiment$value %>% replace_na(0)
+
+tweet_avg_sentiment <- tweet_sentiment %>% filter(datetime > mdy('8/15/2017') & datetime < mdy('9/1/2017')) %>%
+   group_by(date) %>% summarize(avgSent = mean(value))
+
+sentiment_plot <- tweet_avg_sentiment %>% ggplot(aes(x=date, y = avgSent)) +
+  geom_col()
+
+sentiment_plot
+
+```

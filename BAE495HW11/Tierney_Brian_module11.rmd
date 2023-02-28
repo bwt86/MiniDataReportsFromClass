@@ -1,0 +1,90 @@
+---
+title: "BAE 495 Module 11: Swine Farm Flooding in NC River Basins"
+author: "Brian Tierney"
+date: "11/16/2021"
+output: html_document
+---
+
+# Background
+
+North Carolina is home to one of the largest swine production industries in the country, and ranks third among states in number of hogs produced after Iowa and Minnesota. Unlike Iowa and Minnesota, North Carolina is vulnerable to extensive hurricane-driven flooding. Most swine in North Carolina are produced in the eastern part of the state, which is also the region that receives the brunt of hurricane-driven flooding. As a result, hog farms are vulnerable to flooding. Floods can lead to mass death of pigs on a farm, and can also result in pollutant sources, such as manure, flowing into waterways. In this assignment, you will identify which swine farms in the Neuse River Watershed are most susceptible to flooding.
+
+In this report I will analyse which river basin.watershed has the most swine farms then look at which swine farms in that basin are the most susceptible to flooding.
+
+### Import Libraries
+
+```{r, results='hide', message=FALSE,warning=FALSE}
+library(tidyverse)
+library(sf)
+library(ggspatial)
+```
+
+# How Many Swine farms are there in Each Major NC Watershed?
+
+### Read in map data and transform to EPSG 32119
+
+```{r, results='hide', message=FALSE,warning=FALSE}
+river_basins <- read_sf('spatial_data/river_basins_SIMPLE.shp') %>% st_transform(crs=st_crs(32119))
+swine_farms <- read_sf('spatial_data/swine_farms.shp') %>% st_transform(crs=st_crs(32119))
+```
+
+### Spatial Join Data
+
+```{r, results='hide', message=FALSE,warning=FALSE}
+river_swine_data <- st_join(river_basins, swine_farms)
+```
+
+### Summarize Data
+
+``` {r, results='hide', message=FALSE,warning=FALSE}
+summarized_river_swine <- river_swine_data %>% count(Basin)
+```
+
+
+### Plot Data
+
+```{r, message=FALSE,warning=FALSE}
+basin_plot <- summarized_river_swine %>% ggplot() +
+  geom_sf(aes(fill=n)) +
+  scale_fill_viridis_c() +
+  theme_bw() + 
+  labs(fill = 'No. of swine farms') +
+  annotation_scale(location = 'bl')
+basin_plot
+```
+
+# How many swine farms are located within 1 km of waterways in the Neuse River Watershed?
+
+### Read and Transform Map Data
+
+```{r, results='hide', message=FALSE,warning=FALSE}
+neuse_waterways <- read_sf('spatial_data/neuse_waterways.shp') %>% st_transform(crs=st_crs(32119))
+```
+
+### Filter for neuse river watershed and create buffer around neuse waterways
+
+```{r, results='hide', message=FALSE,warning=FALSE}
+neuse_watershed <- river_basins %>% filter(Basin == "NEU")
+buffer_neuse_waterways <- neuse_waterways %>% st_buffer(dist = (1 * 10^3))
+```
+
+### Get intersection of buffer and swine farms
+
+```{r, results='hide', message=FALSE,warning=FALSE}
+swine_in_buffer <- st_intersection(buffer_neuse_waterways, swine_farms)
+```
+
+
+### Plot the data
+
+```{r, message=FALSE,warning=FALSE}
+neuse_swine_plot <- neuse_watershed %>% ggplot() +
+  geom_sf() +
+  geom_sf(data = buffer_neuse_waterways, fill= 'gray', alpha =.5, color = 'gray') +
+  geom_sf(data = swine_in_buffer) +
+  annotation_scale(location = 'br') +
+  annotation_north_arrow(location = 'tr', style = north_arrow_fancy_orienteering) +
+  theme_bw()
+
+neuse_swine_plot
+```

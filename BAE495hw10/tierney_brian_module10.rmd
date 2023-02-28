@@ -1,0 +1,111 @@
+---
+title: "Module 10 Brian Tierney BAE 495"
+author: "Brian Tierney"
+date: "11/10/2021"
+output: html_document
+---
+
+# Background
+
+Pollutants such as particulate matter, ozone, nitrogen oxide, hydrocarbons, volatile organic compounds, and other pollutants are monitored across the country by the U.S. Environmental Protection Agency (EPA). We’ll specifically focus on two pollutants in this exercise: PM2.5 and ozone. PM2.5 consists of airborne particulate matter (“PM”) smaller than 2.5 μm in diameter. Ozone (O3) is created through an atmospheric reaction with nitrogen dioxide and sunlight. At high levels, PM2.5 and ozone can cause respiratory issues, thus they are continuously monitored and used to issue public health advisories.
+
+In this report I will analyse data from Linville Falls and Frying Pan Mountain to form a conclusion as to whether or not I think the Linville Falls station for recording air data should be closed or not.
+
+# Analysis
+
+Load Libraries 
+```{r, results='hide',message=FALSE,warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(corrr)
+library(broom)
+library(modelr)
+library(knitr)
+library(janitor)
+```
+Read the data files into R
+```{r, results='hide',message=FALSE,warning=FALSE}
+o3_2019 <- read_csv("data/o3_2019.csv")
+pm25_2019 <- read_csv("data/pm25_2019.csv")
+```
+
+### Tidy The Data
+```{r,message=FALSE,warning=FALSE}
+pm25_2019 %>% 
+  clean_names() %>%
+  filter(site_name %in% c("Frying Pan Mountain", "Linville Falls")) %>%
+  dplyr::select(date, site_name, daily_mean_pm2_5_concentration) %>%
+  pivot_wider(names_from = site_name,
+              values_from = daily_mean_pm2_5_concentration) %>%
+  clean_names() %>%
+  rename_if(is.numeric, paste0, "_pm25") -> pm25
+pm25
+
+o3_2019 %>% 
+  clean_names() %>%
+  filter(site_name %in% c("Frying Pan Mountain", "Linville Falls")) %>%
+  dplyr::select(date, site_name, daily_max_8_hour_ozone_concentration) %>%
+  pivot_wider(names_from = site_name,
+              values_from = daily_max_8_hour_ozone_concentration) %>%
+  clean_names() %>%
+  rename_if(is.numeric, paste0, "_o3") -> o3
+o3
+```
+
+Inner Join the tables
+```{r,message=FALSE,warning=FALSE}
+levels_o3_p25 <- inner_join(pm25,o3)
+levels_o3_p25 
+
+cor_levels_o3_p25 <- levels_o3_p25 %>% select(-date) %>% corrr::correlate()
+cor_plot <- cor_levels_o3_p25 %>% rplot()
+cor_plot
+```
+
+### Fit the four regression models then combine them into a single table
+
+```{r,message=FALSE,warning=FALSE}
+modelOne <- lm(linville_falls_pm25~frying_pan_mountain_pm25, data= levels_o3_p25) 
+
+modelTwo <- lm(linville_falls_pm25~frying_pan_mountain_pm25 + frying_pan_mountain_o3, data= levels_o3_p25)  
+
+modelThree <- lm(linville_falls_o3~frying_pan_mountain_o3, data= levels_o3_p25)
+
+modelFour <- lm(linville_falls_o3~frying_pan_mountain_pm25 + frying_pan_mountain_o3, data= levels_o3_p25)
+
+reg_models <- modelOne %>% glance()  %>% full_join(modelTwo %>% glance() ) %>% 
+  full_join(modelThree%>% glance() ) %>%
+  full_join(modelFour%>% glance() )
+reg_models
+```
+
+### Plot Observed Ozone at Linville Falls vs Frying Pan Mountain
+
+```{r,message=FALSE,warning=FALSE}
+scale <- c(.027,.06)
+levels_o3_p25 %>% 
+  add_residuals(modelThree) %>%
+  add_predictions(modelThree) %>%
+  ggplot(aes(y=linville_falls_o3, x= frying_pan_mountain_o3)) +
+  scale_x_continuous(name="Observed Ozone (ppm), Linville Falls",limits = scale) +
+  scale_y_continuous(name="Observed Ozone (ppm), Frying Pan Mountain", limits = scale) + 
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  labs(title="Observed Ozone at Linville Falls vs Frying Pan Moiuntain")
+```
+
+### Plot Predicted vs Observed Ozone at Linville Falls
+
+```{r,message=FALSE,warning=FALSE}
+levels_o3_p25 %>% add_predictions(modelThree) %>%
+  ggplot(aes(x=pred, y=linville_falls_o3)) +
+  scale_x_continuous(name="Predicted Ozone (ppm)",limits = scale) +
+  scale_y_continuous(name="Observed Ozone (ppm)", limits = scale) + 
+  geom_point() +
+  geom_abline(slope = 1,intercept = 0, color='red') +
+  labs(title="Observed vs Predicted Ozone at Linville Falls")
+```
+
+# Conclusion
+
+In my opinion the  station should not be decommissioned. As seen in the plot of the comparison plot of observed vs predicted ozone, the prediction of ozone based on the Frying Pan Mountain Data significantly deviates from the observed data at Lineville falls. This deviation can also be seen in the comparison of observed ozone plot of Lineville Falls vs Frying Pan Mountain. The reader can see that very few values fall into the liner regression models prediction.
